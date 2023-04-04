@@ -90,6 +90,8 @@ DEALINGS IN THE SOFTWARE.  */
  * Defining HTS_ALLOW_UNALIGNED=0 forces shift-and-or.
  */
 
+
+
 // Consider using AX_CHECK_ALIGNED_ACCESS_REQUIRED in autoconf.
 #ifndef HTS_ALLOW_UNALIGNED
 #    if defined(HTS_x86)
@@ -98,6 +100,9 @@ DEALINGS IN THE SOFTWARE.  */
 #        define HTS_ALLOW_UNALIGNED 0
 #    endif
 #endif
+
+/* if want to do fsanitize=undefined need to force to be 0*/
+# define HTS_ALLOW_UNALIGNEDD 0
 
 #if HTS_ALLOW_UNALIGNED != 0
 #    if defined (__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))

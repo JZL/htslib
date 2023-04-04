@@ -4286,6 +4286,8 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
     /*   /\* all_aux[i].s = NULL; *\/ */
     /* } */
 
+    // Since surrounded by if statement, easiest way is to start at -1, then
+    // increment at start of for loop
     int auxI = -1;
     while (end - s >= 4) {
         auxI++;
@@ -4314,6 +4316,10 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
       /* int inorder_i = map[(unsigned char) (this_all_aux->s)[0]] [(unsigned char) (this_all_aux->s)[1]]; */
       int inorder_i = map_ptr[twod_to_oned(( unsigned char) (all_aux_ptr[i].s)[0], (unsigned char) (all_aux_ptr[i].s)[1], 256)];
 
+      if(inorder_i < 0){
+        hts_log_error("Need to modify all of the seq*[] to include all possible tag names");
+      }
+
       // If want to disable rearrangement. Then can also change `numTags` below
       // to be auxI to be identical to normal samtools, as a sanity check
       /* int inorder_i = i; */
@@ -4338,6 +4344,8 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
         //verify this is what we want not adding the null above then kputs
         r |= kputsn(all_aux_inorder[i]->s, all_aux_inorder[i]->l, str);
 
+        // Since reusing all_aux so not constantly re-allocating, clear (very
+        // fast)
         ks_clear(all_aux_inorder[i]);
       }
     }
