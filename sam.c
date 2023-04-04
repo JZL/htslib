@@ -67,6 +67,15 @@ KHASH_SET_INIT_INT(tag)
  *** BAM header I/O ***
  **********************/
 
+
+inline int twod_to_oned(int x, int y, int rowSize){
+   return rowSize *x + y;
+ }
+
+int global_isMapDefined = 0;
+unsigned char global_map[256 * 256];
+kstring_t global_all_aux[20];
+
 HTSLIB_EXPORT
 const int8_t bam_cigar_table[256] = {
     // 0 .. 47
@@ -3027,7 +3036,7 @@ static SAM_state *sam_state_create(htsFile *fp) {
     return fd;
 }
 
-static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *str);
+static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *str, unsigned char* map_ptr, kstring_t* all_aux_ptr);
 static void *sam_format_worker(void *arg);
 
 static void sam_state_err(SAM_state *fd, int errcode) {
@@ -3641,8 +3650,19 @@ static void *sam_format_worker(void *arg) {
 
     kstring_t ks = {0, gl->alloc, gl->data};
 
+    unsigned char local_map[256 * 256];
+    kstring_t local_all_aux[20];
+    const char *seq[] = {"AS", "MD", "NH", "NM", "PG", "RG", "UQ", "XB", "XC", "XF", "XG", "XM", "ZP", "ZS", "gf", "gn", "gs"};
+    const int numTags = (sizeof(seq)/sizeof(seq[0]));
+    memset(local_map, -1, sizeof(local_map));
+    //major 3x speed up if don't reallocate every time, but need to clear some time
+    memset(local_all_aux, 0, sizeof(local_all_aux));
+    for(int i=0; i<numTags; i++){
+      local_map[twod_to_oned((unsigned char) seq[i][0], (unsigned char) seq[i][1], 256)] = (unsigned char) i;
+    }
+
     for (i = 0; i < gb->nbams; i++) {
-        if (sam_format1_append(fd->h, &gb->bams[i], &ks) < 0) {
+      if (sam_format1_append(fd->h, &gb->bams[i], &ks, &local_map, &local_all_aux) < 0) {
             sam_state_err(fd, errno ? errno : EIO);
             goto err;
         }
@@ -4157,8 +4177,19 @@ int sam_read1(htsFile *fp, sam_hdr_t *h, bam1_t *b)
     return pass_filter < 0 ? -2 : ret;
 }
 
+int compare_kstrings(const void *a, const void *b) {
+  const kstring_t *ka = (const kstring_t *)a;
+  const kstring_t *kb = (const kstring_t *)b;
+  if(ka->l == 0){
+    return -1;
+  }
+  if(kb->l == 0){
+    return -1;
+  }
+  return -1*strcmp(ka->s, kb->s);
+}
 
-static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
+static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *str, unsigned char* map_ptr, kstring_t* all_aux_ptr)
 {
     int i, r = 0;
     uint8_t *s, *end;
@@ -4220,12 +4251,110 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
     s = bam_get_aux(b); // aux
     end = b->data + b->l_data;
 
+    /* const int NUM_STRINGS = 100; */
+    /* kstring_t all_aux[20]; */
+    const char *seq[] = {"AS", "MD", "NH", "NM", "PG", "RG", "UQ", "XB", "XC", "XF", "XG", "XM", "ZP", "ZS", "gf", "gn", "gs"};
+    const int numTags = (sizeof(seq)/sizeof(seq[0]));
+    
+    /* unsigned char map[256 * 256]; */
+    /* int isMapDefined = 0; */
+    /* inline int twod_to_oned(int x, int y, int rowSize){ */
+    /*   return rowSize *x + y; */
+    /* } */
+    /* kstring_t all_aux[20]; */
+
+    /* int map[256][256]; */
+    /* if(isMapDefined == 0){ */
+    /*   isMapDefined = 1; */
+    /*   memset(map, -1, sizeof(map)); */
+
+    /*   //major 3x speed up if don't reallocate every time, but need to clear some time */
+    /*   memset(all_aux, 0, sizeof(all_aux)); */
+
+    /*   for(int i=0; i<numTags; i++){ */
+    /*     /\* map[(unsigned char) seq[i][0]][(unsigned char) seq[i][1]] = (unsigned char) i; *\/ */
+    /*     map[twod_to_oned((unsigned char) seq[i][0], (unsigned char) seq[i][1], 256)] = (unsigned char) i; */
+    /*   } */
+    /* } */
+
+    //0, 0, NULL is all 0 anyways
+    /* memset(all_aux, 0, sizeof(all_aux)); */
+    /* for (int i = 0; i < 20; i++) { */
+    /*   ks_initialize(&all_aux[i]); */
+    /*   /\* all_aux[i].l = 0; *\/ */
+    /*   /\* all_aux[i].m = 0; *\/ */
+    /*   /\* all_aux[i].s = NULL; *\/ */
+    /* } */
+
+    int auxI = -1;
     while (end - s >= 4) {
-        r |= kputc_('\t', str);
-        if ((s = (uint8_t *)sam_format_aux1(s, s[2], s+3, end, str)) == NULL)
+        auxI++;
+        /* r |= kputc_('\t', str); */
+        if ((s = (uint8_t *)sam_format_aux1(s, s[2], s+3, end,
+                                            /* str */
+                                            &all_aux_ptr[auxI]
+                                            )) == NULL)
             goto bad_aux;
     }
-    r |= kputsn("", 0, str); // nul terminate
+    //now auxI gives how many aux's there were
+    auxI++;
+
+    23;
+    kstring_t* all_aux_inorder[20];
+    memset(all_aux_inorder, 0, sizeof(all_aux_inorder));
+
+    for(int i=0; i<20; i++){
+      // bc assumes one big string, doesn't add a null sadly
+      /* kputsn("", 0, &all_aux[i]); */
+
+      if(all_aux_ptr[i].l == 0){
+        break;
+      }
+
+      /* int inorder_i = map[(unsigned char) (this_all_aux->s)[0]] [(unsigned char) (this_all_aux->s)[1]]; */
+      int inorder_i = map_ptr[twod_to_oned(( unsigned char) (all_aux_ptr[i].s)[0], (unsigned char) (all_aux_ptr[i].s)[1], 256)];
+
+      // If want to disable rearrangement. Then can also change `numTags` below
+      // to be auxI to be identical to normal samtools, as a sanity check
+      /* int inorder_i = i; */
+      
+
+      all_aux_inorder[inorder_i] = &all_aux_ptr[i];
+    }
+
+    /* //at i=3? */
+    /* for (int i = 0; i < 20; i++){ */
+    /*   if(all_aux_inorder[i] == NULL || all_aux_inorder[i]->l == 0){ */
+    /*     printf("all_aux_inorder[%d]->s = NNN\n", i); */
+    /*   }else{ */
+    /*     printf("all_aux_inorder[%d]->s = %s\n", i, all_aux_inorder[i]->s); */
+    /*   } */
+    /* } */
+
+    for (int i = 0; i < numTags; i++){
+      r |= kputc_('\t', str);
+      if(!(all_aux_inorder[i] == NULL || all_aux_inorder[i]->l == 0)){
+        /* r |= kputs(all_aux_inorder[i]->s, str); */
+        //verify this is what we want not adding the null above then kputs
+        r |= kputsn(all_aux_inorder[i]->s, all_aux_inorder[i]->l, str);
+
+        ks_clear(all_aux_inorder[i]);
+      }
+    }
+
+    /* for (int i = 0; i < 20; i++){ */
+    /*   if(all_aux[i].l == 0){ */
+    /*     printf("all_aux[%d].s = NNN\n", i); */
+    /*   }else{ */
+    /*     printf("all_aux[%d].s = %s\n", i, all_aux[i].s); */
+    /*   } */
+    /* } */
+
+    23;
+    /* https://samtools.github.io/hts-specs/SAMv1.pdf
+       TAG is a two-character string that defines the format and content of VALUE */
+
+    r |= kputsn("", 0, str);  // null terminate
     if (r < 0) goto mem_err;
 
     return str->l;
@@ -4244,8 +4373,21 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
 
 int sam_format1(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
 {
+
+  if(global_isMapDefined == 0){
+    global_isMapDefined = 1; 
+    const char *seq[] = {"AS", "MD", "NH", "NM", "PG", "RG", "UQ", "XB", "XC", "XF", "XG", "XM", "ZP", "ZS", "gf", "gn", "gs"};
+    const int numTags = (sizeof(seq)/sizeof(seq[0]));
+    memset(global_map, -1, sizeof(global_map));
+    //major 3x speed up if don't reallocate every time, but need to clear some time
+    memset(global_all_aux, 0, sizeof(global_all_aux));
+    for(int i=0; i<numTags; i++){
+      global_map[twod_to_oned((unsigned char) seq[i][0], (unsigned char) seq[i][1], 256)] = (unsigned char) i;
+    }
+  }
+
     str->l = 0;
-    return sam_format1_append(h, b, str);
+    return sam_format1_append(h, b, str, &global_map, &global_all_aux);
 }
 
 static inline uint8_t *skip_aux(uint8_t *s, uint8_t *end);
