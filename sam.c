@@ -3654,7 +3654,7 @@ static void *sam_format_worker(void *arg) {
     kstring_t local_all_aux[20];
     const char *seq[] = {"AS", "MD", "NH", "NM", "PG", "RG", "UQ", "XB", "XC", "XF", "XG", "XM", "ZP", "ZS", "gf", "gn", "gs"};
     const int numTags = (sizeof(seq)/sizeof(seq[0]));
-    memset(local_map, -1, sizeof(local_map));
+    memset(local_map, (unsigned char) 255, sizeof(local_map));
     //major 3x speed up if don't reallocate every time, but need to clear some time
     memset(local_all_aux, 0, sizeof(local_all_aux));
     for(int i=0; i<numTags; i++){
@@ -4314,9 +4314,18 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
       }
 
       /* int inorder_i = map[(unsigned char) (this_all_aux->s)[0]] [(unsigned char) (this_all_aux->s)[1]]; */
-      int inorder_i = map_ptr[twod_to_oned(( unsigned char) (all_aux_ptr[i].s)[0], (unsigned char) (all_aux_ptr[i].s)[1], 256)];
+      /* int inorder_i = map_ptr[twod_to_oned(( unsigned char) (all_aux_ptr[i].s)[0], (unsigned char) (all_aux_ptr[i].s)[1], 256)]; */
+      unsigned char inorder_i = map_ptr[twod_to_oned(
+                                           (unsigned char)(all_aux_ptr[i].s)[0],
+                                           (unsigned char)(all_aux_ptr[i].s)[1], 256
+                                           )];
 
-      if(inorder_i < 0){
+      /* For debugging with GDB */
+      /* if(all_aux_ptr[i].s[0] == 'X' && all_aux_ptr[i].s[1] == 'G') */
+      /* raise(SIGTRAP); */
+
+      //Technically if have >= 255 tags will break
+      if(inorder_i == 255){
         hts_log_error("Need to modify all of the seq*[] to include all possible tag names");
       }
 
@@ -4386,7 +4395,7 @@ int sam_format1(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
     global_isMapDefined = 1; 
     const char *seq[] = {"AS", "MD", "NH", "NM", "PG", "RG", "UQ", "XB", "XC", "XF", "XG", "XM", "ZP", "ZS", "gf", "gn", "gs"};
     const int numTags = (sizeof(seq)/sizeof(seq[0]));
-    memset(global_map, -1, sizeof(global_map));
+    memset(global_map, 255, sizeof(global_map));
     //major 3x speed up if don't reallocate every time, but need to clear some time
     memset(global_all_aux, 0, sizeof(global_all_aux));
     for(int i=0; i<numTags; i++){
